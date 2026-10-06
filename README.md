@@ -151,6 +151,25 @@ For multiplayer testing, use matching mod versions and configurations on partici
 
 Suggested mission checks: compare otherwise identical raids across presets; test a target at 69 and 71 degrees with isolated radar coverage; add a second radar to check shared tracking; test short laser bursts and full cooldown. To make malfunctions easy to observe, temporarily choose `Custom`, set all three failure chances to 100%, enable verbose logging, then reselect Realistic (or another desired preset) after testing.
 
+## Compatibility with modded weapons and air defenses
+
+**Yes, when the added content uses the game's native components and execution paths.** Revert To Stone Age patches game component methods, not lists of vanilla weapon names, prefab names or IDs. It does not require separate registration of each added weapon.
+
+| Added content | Coverage | Conditions |
+|---|---|---|
+| Missiles using native `Missile` | Launch malfunction roll, motor defects and actuator defects | Authoritative `StartMissile`, `MotorThrust` and `Steering` paths execute. |
+| Automatic turrets using native `Turret` | Acquisition delay, lock-time scaling, slower slew and continuous settling | Native `AimTurret(WeaponStation)` executes; manual control retains native slew. |
+| Radar-controlled launchers using native `FireControl` | Salvo planning and launch-interval penalties | Native `PlanSalvo` / `LaunchSalvo` execute and the controller has an attached radar. |
+| Surface radars using native `Radar` | Clutter scaling and upper blind cone | Native radar-return evaluation runs; aircraft and missile radars retain their own upper coverage. |
+| Lasers using native `Laser` | Thermal budget, cooldown and damage derating | Native fire and simulation methods execute. |
+| Independently implemented projectiles, sensors or launch controllers | Not automatically guaranteed | Components that replace these native methods need a specific integration review. |
+
+Blueprinter content that reuses the native components is covered by the same hooks. Source inspection of the local Apex-6 project confirms that its drone is based on a native missile prefab, and its TEL uses `MissileLauncher` and `Turret`. The local HSM-290 Killjoy project also uses `Missile`, but includes additional runtime Harmony guidance logic, so the combined behavior still needs an in-mission check.
+
+These are **structural compatibility findings, not a claim that every mod combination has been tested in a live mission**. Another plugin may skip a patched method or overwrite thrust, control inputs, timings or damage after this mod applies its effect. Such cases require checking the specific mod and patch ordering. Native seeker lock remains unchanged by Revert To Stone Age.
+
+To check a particular combination, enable verbose logging and temporarily use Custom with 100% failure rates, launch the added missile, and inspect the scheduled-failure message. This confirms that the launch hook sees it; observing its flight is still required to establish that another mod does not override the selected defect. Restore a normal preset afterward. For an added SAM, separately check its native turret path and radar FireControl path; support for its missile alone does not prove that every launcher penalty applies.
+
 ## Building and testing
 
 The source targets .NET Framework 4.7.2. Supply your game directory to resolve the game's and BepInEx's assemblies:
