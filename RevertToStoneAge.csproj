@@ -7,7 +7,7 @@
     <RootNamespace>RevertToStoneAge</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GameDir Condition="'$(GameDir)' == ''">F:\Games\Nuclear.Option.v0.34.1</GameDir>
-    <Version>1.7.0</Version>
+    <Version>1.8.0</Version>
     <Description>Realistic CIWS response delay, ground clutter masking, and laser thermal budget for Nuclear Option.</Description>
   </PropertyGroup>
 

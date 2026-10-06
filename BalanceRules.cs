@@ -7,6 +7,12 @@ namespace RevertToStoneAge
     // Pure decisions shared by runtime hooks and the boundary tests.
     public static class BalanceRules
     {
+        public static float ScaleTiming(float native, float multiplier, float minimum) => Math.Max(native * multiplier, minimum);
+        public static float AdvanceStability(float stable, float delta, bool aligned, float angular, float limit, float settling)
+        {
+            if (!aligned || angular > limit) return 0f;
+            return Math.Min(settling, stable + Math.Max(0f, delta) / (1f + angular / Math.Max(0.1f, limit)));
+        }
         public static bool IsAboveCoverage(float x, float y, float z, float maximumElevation)
         {
             if (y <= 0f || maximumElevation >= 90f) return false;

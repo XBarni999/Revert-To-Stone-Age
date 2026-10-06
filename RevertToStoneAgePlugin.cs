@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.CompilerServices;
 using BepInEx;
 using BepInEx.Configuration;
@@ -8,15 +8,6 @@ using UnityEngine;
 
 namespace RevertToStoneAge
 {
-    public enum ModPreset
-    {
-        Custom,
-        Realistic,
-        ArcadeEasy,
-        ModernDefense,
-        WornEquipment
-    }
-
     [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
     public class RevertToStoneAgePlugin : BaseUnityPlugin
     {
@@ -75,9 +66,12 @@ namespace RevertToStoneAge
         public static ConfigEntry<float> FailureOnsetMax;
         public static ConfigEntry<float> IgnitionDelayDuration;
         public static ConfigEntry<float> DegradedThrustMultiplier;
-        internal static float Severity => ActivePreset.Value == ModPreset.ModernDefense ? 0.5f : ActivePreset.Value == ModPreset.WornEquipment ? 1.5f : ActivePreset.Value == ModPreset.ArcadeEasy ? 2f : 1f;
-        internal static float Setting(float custom, float realistic) => ActivePreset.Value == ModPreset.Custom ? custom : realistic * Severity;
-
+        public static ConfigEntry<float> TurretSlewMultiplier;
+        public static ConfigEntry<float> RadarFireControlPlanningMultiplier;
+        public static ConfigEntry<float> RadarSalvoIntervalMultiplier;
+        public static ConfigEntry<float> RadarMinimumPlanningSeconds;
+        public static ConfigEntry<float> RadarMinimumSalvoIntervalSeconds;
+        private bool applyingPreset;
         private void Awake()
         {
             Instance = this;
@@ -153,8 +147,13 @@ namespace RevertToStoneAge
             FailureOnsetMax = Config.Bind("5. Munition Malfunctions", "DelayedFailureLatestSeconds", 3f, new ConfigDescription("Latest onset; automatically sorted against earliest.", new AcceptableValueRange<float>(0.1f, 30f)));
             IgnitionDelayDuration = Config.Bind("5. Munition Malfunctions", "FaultyIgnitionDelaySeconds", 0.6f, new ConfigDescription("Additional ignition delay for a faulty motor, after ejection. Native motor logic resumes afterward.", new AcceptableValueRange<float>(0.1f, 5f)));
             DegradedThrustMultiplier = Config.Bind("5. Munition Malfunctions", "DegradedMotorThrustMultiplier", 0.55f, new ConfigDescription("Remaining thrust for a degraded motor; native fuel use remains unchanged.", new AcceptableValueRange<float>(0.1f, 0.95f)));
-            Config.SettingChanged += (_, __) => UpdateCachedPresetValues();
-            UpdateCachedPresetValues();
+            TurretSlewMultiplier = Config.Bind("2. Turret Reaction Delay", "TurretSlewMultiplier", 0.625f, new ConfigDescription("Multiplier for native traverse/elevation speed. Applies to automatic turrets, preserves manual control.", new AcceptableValueRange<float>(0.1f, 1f)));
+            RadarFireControlPlanningMultiplier = Config.Bind("9. Radar Fire Control", "PlanningTimeMultiplier", 2.5f, new ConfigDescription("Scale native FireControl salvo planning time, including launchers bypassing turret aiming.", new AcceptableValueRange<float>(1f, 8f)));
+            RadarSalvoIntervalMultiplier = Config.Bind("9. Radar Fire Control", "SalvoIntervalMultiplier", 2f, new ConfigDescription("Scale native interval between FireControl launches.", new AcceptableValueRange<float>(1f, 8f)));
+            RadarMinimumPlanningSeconds = Config.Bind("9. Radar Fire Control", "MinimumPlanningSecondsPerShot", 1.2f, new ConfigDescription("Minimum planning time per queued shot, even if native planning time is zero.", new AcceptableValueRange<float>(0f, 10f)));
+            RadarMinimumSalvoIntervalSeconds = Config.Bind("9. Radar Fire Control", "MinimumSalvoIntervalSeconds", 0.8f, new ConfigDescription("Minimum interval between queued launches, even if native interval is zero.", new AcceptableValueRange<float>(0f, 10f)));
+            Config.SettingChanged += OnSettingChanged;
+            ApplySelectedPreset();
 
 
             var harmony = new Harmony(PluginInfo.PLUGIN_GUID);
@@ -163,32 +162,59 @@ namespace RevertToStoneAge
             Log.LogInfo($"{PluginInfo.PLUGIN_NAME} v{PluginInfo.PLUGIN_VERSION} initialized with physical acquisition limits and thermal budget.");
         }
 
-        public static void UpdateCachedPresetValues()
+        private void ApplySelectedPreset()
         {
-            bool custom = ActivePreset.Value == ModPreset.Custom;
-            float severity = Severity;
-            CachedLowAltPenalty = custom ? Mathf.Clamp01(LowAltitudeSignalPenalty.Value) : Mathf.Clamp01(1f - 0.2f * severity);
-            CachedLookDownPenalty = custom ? Mathf.Clamp01(LookDownSignalPenalty.Value) : Mathf.Clamp01(1f - 0.15f * severity);
-            CachedClutterMult = custom ? Mathf.Clamp(ExtraClutterMultiplier.Value, 1f, 8f) : 1f + 0.25f * severity;
-            CachedLockTimeMult = custom ? Mathf.Clamp(TurretLockTimeMultiplier.Value, 0.1f, 5f) : 1f + 0.15f * severity;
-            CachedLaserMaxFire = custom ? Mathf.Clamp(LaserMaxFiringTime.Value, 0.1f, 60f) : 6f / severity;
-            CachedLaserCooldown = custom ? Mathf.Clamp(LaserCooldownTime.Value, 0.1f, 120f) : 4f * severity;
+            var values = PresetCatalog.Get(ActivePreset.Value);
+            applyingPreset = true;
+            bool save = Config.SaveOnConfigSet;
+            Config.SaveOnConfigSet = false;
+            try
+            {
+                if (values != null)
+                    foreach (var pair in values)
+                    {
+                        var field = typeof(RevertToStoneAgePlugin).GetField(pair.Key);
+                        ((ConfigEntry<float>)field.GetValue(null)).Value = pair.Value;
+                    }
+                UpdateCachedPresetValues();
+            }
+            finally { Config.SaveOnConfigSet = save; applyingPreset = false; }
+            Config.Save();
         }
 
-        public static float GetTargetSwitchDelay(bool missile) => Mathf.Clamp(Setting(missile ? MissileTargetSwitchDelay.Value : GunTargetSwitchDelay.Value, missile ? 0.7f : 0.25f), 0f, 15f);
-        public static float GetFailRateForCost(float cost)
+        private void OnSettingChanged(object sender, SettingChangedEventArgs args)
         {
-            float custom = cost < 1000000f ? CheapMunitionFailRate.Value : cost < 10000000f ? StandardMunitionFailRate.Value : HighEndMunitionFailRate.Value;
-            // Price is only a coarse configurable proxy; these are gameplay assumptions, not measured reliability.
-            return Mathf.Clamp(Setting(custom, 0.5f), 0f, 100f);
+            if (applyingPreset) return;
+            if (args.ChangedSetting == ActivePreset) { ApplySelectedPreset(); return; }
+            // A numeric adjustment becomes Custom so displayed values always match effective values.
+            if (args.ChangedSetting is ConfigEntry<float> && ActivePreset.Value != ModPreset.Custom)
+            {
+                applyingPreset = true;
+                try { ActivePreset.Value = ModPreset.Custom; }
+                finally { applyingPreset = false; }
+            }
+            UpdateCachedPresetValues();
         }
+
+        public static void UpdateCachedPresetValues()
+        {
+            CachedLowAltPenalty = LowAltitudeSignalPenalty.Value;
+            CachedLookDownPenalty = LookDownSignalPenalty.Value;
+            CachedClutterMult = ExtraClutterMultiplier.Value;
+            CachedLockTimeMult = TurretLockTimeMultiplier.Value;
+            CachedLaserMaxFire = LaserMaxFiringTime.Value;
+            CachedLaserCooldown = LaserCooldownTime.Value;
+            FireControlLiveTiming.Refresh();
+        }
+        public static float GetTargetSwitchDelay(bool missile) => missile ? MissileTargetSwitchDelay.Value : GunTargetSwitchDelay.Value;
+        public static float GetFailRateForCost(float cost) => cost < 1000000f ? CheapMunitionFailRate.Value : cost < 10000000f ? StandardMunitionFailRate.Value : HighEndMunitionFailRate.Value;
     }
 
     public static class PluginInfo
     {
         public const string PLUGIN_GUID = "com.xbarni.reverttostoneage";
         public const string PLUGIN_NAME = "Revert To Stone Age";
-        public const string PLUGIN_VERSION = "1.7.0";
+        public const string PLUGIN_VERSION = "1.8.0";
     }
 
     // Typed cached field delegates avoid FieldInfo.GetValue/SetValue boxing on simulation ticks.
@@ -203,6 +229,11 @@ namespace RevertToStoneAge
         internal static readonly AccessTools.FieldRef<Missile, bool> Ignition = AccessTools.FieldRefAccess<Missile, bool>("ignition");
         internal static readonly AccessTools.FieldRef<Missile, Vector3> Inputs = AccessTools.FieldRefAccess<Missile, Vector3>("inputs");
         internal static readonly AccessTools.FieldRef<TargetDetector, Unit> RadarOwner = AccessTools.FieldRefAccess<TargetDetector, Unit>("attachedUnit");
+        internal static readonly AccessTools.FieldRef<Turret, float> Traverse = AccessTools.FieldRefAccess<Turret, float>("traverseRate");
+        internal static readonly AccessTools.FieldRef<Turret, float> Elevation = AccessTools.FieldRefAccess<Turret, float>("elevationRate");
+        internal static readonly AccessTools.FieldRef<Turret, bool> Manual = AccessTools.FieldRefAccess<Turret, bool>("manual");
+        internal static readonly AccessTools.FieldRef<FireControl, float> Planning = AccessTools.FieldRefAccess<FireControl, float>("planningTimePerFire");
+        internal static readonly AccessTools.FieldRef<FireControl, float> Salvo = AccessTools.FieldRefAccess<FireControl, float>("salvoInterval");
         public static void Initialize() { if (Owner == null) throw new InvalidOperationException("Missing game fields"); }
     }
 
@@ -237,19 +268,34 @@ namespace RevertToStoneAge
     [HarmonyPatch(typeof(Turret), "AimTurret", new Type[] { typeof(WeaponStation) })]
     public static class TurretAcquisitionPatch
     {
-        private class State { public Unit Target; public float Acquired; public float LockMultiplier = 1f; }
+        private class State { public Unit Target; public float Acquired; public float LockMultiplier = 1f; public float StableTime; }
         private static readonly ConditionalWeakTable<Turret, State> States = new ConditionalWeakTable<Turret, State>();
+        private static void Prefix(Turret __instance, out Vector2 __state)
+        {
+            __state = new Vector2(FastReflection.Traverse(__instance), FastReflection.Elevation(__instance));
+            if (!RevertToStoneAgePlugin.TurretDelayEnabled.Value || FastReflection.Manual(__instance)) return;
+            FastReflection.Traverse(__instance) *= RevertToStoneAgePlugin.TurretSlewMultiplier.Value;
+            FastReflection.Elevation(__instance) *= RevertToStoneAgePlugin.TurretSlewMultiplier.Value;
+        }
+        private static Exception Finalizer(Turret __instance, Vector2 __state, Exception __exception)
+        {
+            FastReflection.Traverse(__instance) = __state.x;
+            FastReflection.Elevation(__instance) = __state.y;
+            return __exception;
+        }
         private static void Postfix(Turret __instance, ref bool __result)
         {
             State state = States.GetOrCreateValue(__instance);
-            float mult = RevertToStoneAgePlugin.TurretDelayEnabled.Value ? RevertToStoneAgePlugin.CachedLockTimeMult : 1f;
+            float mult = RevertToStoneAgePlugin.TurretDelayEnabled.Value && !FastReflection.Manual(__instance) ? RevertToStoneAgePlugin.CachedLockTimeMult : 1f;
             if (mult != state.LockMultiplier)
             {
                 FastReflection.LockTime(__instance) = FastReflection.LockTime(__instance) / state.LockMultiplier * mult;
                 state.LockMultiplier = mult;
             }
+            if (FastReflection.Manual(__instance)) return;
+            bool nativeOnTarget = __result;
             Unit target = FastReflection.Target(__instance);
-            if (target != state.Target) { state.Target = target; state.Acquired = Time.time; }
+            if (target != state.Target) { state.Target = target; state.Acquired = Time.time; state.StableTime = 0f; }
             if (target == null) return;
             WeaponStation station = FastReflection.Station(__instance);
             bool missile = station != null && station.WeaponInfo != null && station.WeaponInfo.missile;
@@ -262,9 +308,9 @@ namespace RevertToStoneAge
             if (owner != null && owner.rb != null) velocity -= owner.rb.velocity;
             float angular = Vector3.Cross(offset, velocity).magnitude / Mathf.Max(1f, offset.sqrMagnitude) * Mathf.Rad2Deg;
             float limit = Mathf.Clamp(RevertToStoneAgePlugin.AngularTrackingLimit.Value, 1f, 180f);
-            float settling = Mathf.Clamp(RevertToStoneAgePlugin.Setting(RevertToStoneAgePlugin.TrackingConvergenceTime.Value, 0.4f), 0.05f, 10f);
-            // Smooth extra settling budget: a receding fast target does not get a speed-based exemption.
-            if (elapsed < settling * (1f + Mathf.Clamp(angular / limit, 0f, 3f))) __result = false;
+            float settling = RevertToStoneAgePlugin.TrackingConvergenceTime.Value;
+            state.StableTime = BalanceRules.AdvanceStability(state.StableTime, Time.fixedDeltaTime, nativeOnTarget, angular, limit, settling);
+            if (state.StableTime < settling) __result = false;
         }
     }
 
@@ -331,6 +377,49 @@ namespace RevertToStoneAge
         private static bool Prefix(TargetDetector detector, Unit target)
         {
             return !(detector is Radar radar) || target == null || !IsBlind(radar, target.transform.position);
+        }
+    }
+
+    [HarmonyPatch(typeof(FireControl), "PlanSalvo")]
+    public static class FireControlPlanningPatch
+    {
+        private static void Prefix(FireControl __instance) { FireControlLiveTiming.Register(__instance); }
+    }
+    [HarmonyPatch(typeof(FireControl), "LaunchSalvo")]
+    public static class FireControlSalvoPatch
+    {
+        private static void Prefix(FireControl __instance) { FireControlLiveTiming.Register(__instance); }
+    }
+    // Async state machines read fields after awaits. Keep them scaled while active and refresh on config changes.
+    public static class FireControlLiveTiming
+    {
+        private class State { public float Planning; public float Salvo; public bool Initialized; }
+        private static readonly ConditionalWeakTable<FireControl, State> States = new ConditionalWeakTable<FireControl, State>();
+        private static readonly System.Collections.Generic.List<WeakReference> Controls = new System.Collections.Generic.List<WeakReference>();
+        internal static void Register(FireControl control)
+        {
+            var state = States.GetOrCreateValue(control);
+            if (!state.Initialized)
+            {
+                state.Planning = FastReflection.Planning(control); state.Salvo = FastReflection.Salvo(control);
+                state.Initialized = true; Controls.Add(new WeakReference(control));
+            }
+            Apply(control, state);
+        }
+        private static void Apply(FireControl control, State state)
+        {
+            bool enabled = RevertToStoneAgePlugin.TurretDelayEnabled.Value && control.TryGetRadar(out var radar);
+            FastReflection.Planning(control) = enabled ? BalanceRules.ScaleTiming(state.Planning, RevertToStoneAgePlugin.RadarFireControlPlanningMultiplier.Value, RevertToStoneAgePlugin.RadarMinimumPlanningSeconds.Value) : state.Planning;
+            FastReflection.Salvo(control) = enabled ? BalanceRules.ScaleTiming(state.Salvo, RevertToStoneAgePlugin.RadarSalvoIntervalMultiplier.Value, RevertToStoneAgePlugin.RadarMinimumSalvoIntervalSeconds.Value) : state.Salvo;
+        }
+        internal static void Refresh()
+        {
+            for (int i = Controls.Count - 1; i >= 0; i--)
+            {
+                var control = Controls[i].Target as FireControl;
+                if (control == null) { Controls.RemoveAt(i); continue; }
+                if (States.TryGetValue(control, out var state)) Apply(control, state);
+            }
         }
     }
 

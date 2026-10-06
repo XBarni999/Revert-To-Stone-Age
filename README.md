@@ -1,8 +1,8 @@
-# Revert To Stone Age
+﻿# Revert To Stone Age
 
 A BepInEx mod for **Nuclear Option** that changes air-defense acquisition, surface radar coverage, laser endurance, and missile reliability. The default `Realistic` preset uses moderate penalties; every faction is affected, including AI-controlled aircraft, ground SAMs, and ships.
 
-**Current version:** 1.7.0, the first public release. Built against Nuclear Option **0.34.1**. Download the DLL or complete installation ZIP from [Releases](https://github.com/XBarni999/Revert-To-Stone-Age/releases/latest).
+**Current version:** 1.8.0. The first public release was 1.7.0. Built against Nuclear Option **0.34.1**. Download the DLL or complete installation ZIP from [Releases](https://github.com/XBarni999/Revert-To-Stone-Age/releases/latest).
 
 ## What the mod changes
 
@@ -25,9 +25,9 @@ The mod scales the game's existing `clutterFactor` instead of replacing radar-re
 
 In the default preset:
 
-- Extra clutter multiplier: **1.25**.
-- Low-height attenuation proxy: **0.8** at sea level, fading to **1.0** at **70 m**.
-- Downward-view attenuation proxy: up to **0.85**, applied gradually beyond the configured **3-degree** downward threshold.
+- Extra clutter multiplier: **1.8**.
+- Low-height attenuation proxy: **0.6** at sea level, fading to **1.0** at **120 m**.
+- Downward-view attenuation proxy: up to **0.7**, applied gradually beyond the configured **3-degree** downward threshold.
 
 These values scale clutter input; they are not direct percentage reductions in radar range or guaranteed detection probabilities. Height uses `Datum.LocalSeaY` to account for the floating origin. It is height above sea level, not local terrain clearance; native terrain checks remain responsible for terrain masking.
 
@@ -37,17 +37,23 @@ An optional additional radar-horizon check uses `4120 * (sqrt(radar height) + sq
 
 Turrets receive an acquisition delay after switching targets and a multiplier on native lock time. Optional settling time increases with the target's relative angular motion: transverse relative velocity divided by range, including the observer's velocity.
 
-Reaction and settling delays run in parallel; native lock-time accumulation follows. Settling grows smoothly to at most four times its preset baseline. The angular threshold defaults to **30 degrees per second**.
+Reaction and settling delays run in parallel; native lock-time accumulation follows. Settling accumulates only while native aiming is aligned and relative angular motion is within the tracking limit. It resets on native aim loss or excessive angular motion, including during an established engagement. At the limit, settling accumulates at half speed. The default angular limit is **18 degrees per second**. This affects turret firing readiness; missile seeker lock is untouched.
 
-Native turret traverse, elevation, aiming, readiness and firing checks remain in control. The mod does not grant high-speed missiles a price-based or Mach-based interception exemption.
+Automatic turret traverse and elevation rates are scaled to **62.5%** of native values in Realistic. Native aiming and firing checks remain in control; manual turret control retains native slew rates. The original rate fields are restored after each aim call, including exceptions, so repeated calls do not compound the reduction. The mod does not grant high-speed missiles a price-based or Mach-based interception exemption.
+
+### Radar FireControl launch timing
+
+Some radar SAMs launch queued salvos through `FireControl` without passing through `Turret.AimTurret`. Version 1.8.0 also covers `PlanSalvo` and `LaunchSalvo`, keeping their native queues, ammo accounting and target selection intact.
+
+Realistic uses **2.5x planning time**, with a **1.2-second minimum per queued shot**, and **2x salvo intervals**, with a **0.8-second minimum between launches**. Floors cover zero native timings. These controls share the section 2 Enabled toggle. Changes refresh registered controllers immediately; a wait already scheduled by the game's async state machine finishes at its original duration.
 
 ### Laser thermal budget
 
 Lasers have a limited firing budget, cool during pauses, and stop accepting fire commands for a cooldown interval after overheating.
 
-- Default firing budget: **6 seconds**.
-- Default overheat cooldown: **4 seconds**.
-- Damage output decreases gradually from **100% to 65%** as heat accumulates.
+- Default firing budget: **4 seconds**.
+- Default overheat cooldown: **5 seconds**.
+- Damage output decreases gradually from **100% to 55%** as heat accumulates.
 - Native electrical consumption remains unchanged.
 - Damage fields are restored after each simulation tick, including exceptions.
 - The mod does not change the safety switch or beam scale.
@@ -73,11 +79,13 @@ The default onset window for the four in-flight malfunctions is **0.8-3 seconds*
 
 | Preset | Gun / missile reaction (s) | Base settling (s) | Native lock-time multiplier | Laser firing / cooldown (s) | Missile failure chance per launch |
 |---|---:|---:|---:|---:|---:|
-| ModernDefense | 0.125 / 0.35 | 0.2 | 1.075 | 12 / 2 | 0.25% |
-| Realistic (default) | 0.25 / 0.7 | 0.4 | 1.15 | 6 / 4 | 0.5% |
-| WornEquipment | 0.375 / 1.05 | 0.6 | 1.225 | 4 / 6 | 0.75% |
-| ArcadeEasy | 0.5 / 1.4 | 0.8 | 1.3 | 3 / 8 | 1% |
+| ModernDefense | 0.52 / 1.17 | 0.52 | 1.52 | 6.15 / 3.25 | 0.975 / 0.65 / 0.325% |
+| Realistic (default) | 0.8 / 1.8 | 0.8 | 1.8 | 4 / 5 | 1.5 / 1 / 0.5% |
+| WornEquipment | 1.12 / 2.52 | 1.12 | 2.12 | 2.86 / 7 | 2.1 / 1.4 / 0.7% |
+| ArcadeEasy | 1.44 / 3.24 | 1.44 | 2.44 | 2.22 / 9 | 2.7 / 1.8 / 0.9% |
 | Custom | Configured values | Configured value | Configured value | Configured values | Configured cost tiers |
+
+Failure percentages are cheap / standard / high-end cost tiers.
 
 `ArcadeEasy` makes attacking air defenses easier; it affects every side equally. `WornEquipment` represents degraded readiness through settings, not a simulated maintenance history.
 
@@ -85,19 +93,19 @@ Preset clutter values also vary:
 
 | Preset | Low-height proxy | Look-down proxy | Extra clutter multiplier |
 |---|---:|---:|---:|
-| ModernDefense | 0.9 | 0.925 | 1.125 |
-| Realistic | 0.8 | 0.85 | 1.25 |
-| WornEquipment | 0.7 | 0.775 | 1.375 |
-| ArcadeEasy | 0.6 | 0.7 | 1.5 |
+| ModernDefense | 0.74 | 0.805 | 1.52 |
+| Realistic | 0.6 | 0.7 | 1.8 |
+| WornEquipment | 0.44 | 0.58 | 2.12 |
+| ArcadeEasy | 0.28 | 0.46 | 2.44 |
 
-Feature toggles and the shared settings below apply to every preset. Numeric preset-controlled values require `Custom` to use the corresponding custom entries.
+Feature toggles and the shared settings below apply to every preset. Selecting a named preset writes all numeric preset values directly to BepInEx settings and saves them together. Displayed values and runtime values now match. Editing any numeric entry selects Custom and preserves the edit; selecting Custom keeps the currently displayed numbers. Feature toggles remain independent. Named presets are also applied on startup, so an older named configuration receives the new values.
 
 ## Installation
 
 Requires a working BepInEx installation for Nuclear Option, including its Harmony dependency. These dependencies are not bundled.
 
 1. Close the game.
-2. Download `RevertToStoneAge-1.7.0.zip` and extract its `BepInEx` folder into the game directory. Alternatively, copy `RevertToStoneAge.dll` into `BepInEx/plugins`.
+2. Download `RevertToStoneAge-<version>.zip` and extract its `BepInEx` folder into the game directory. Alternatively, copy `RevertToStoneAge.dll` into `BepInEx/plugins`.
 3. Replace older copies of this mod; keep only one installed DLL.
 4. Launch the game once to generate `BepInEx/config/com.xbarni.reverttostoneage.cfg`.
 5. Choose a preset in `[0. General]`, or close the game and copy a template from `Presets` over that configuration file, renaming it to `com.xbarni.reverttostoneage.cfg`.
@@ -110,9 +118,9 @@ Important shared controls:
 
 | Section | Key | Default |
 |---|---|---:|
-| `7. Physical Limits` | `AngularTrackingLimitDegPerSecond` | 30 |
+| `7. Physical Limits` | `AngularTrackingLimitDegPerSecond` | 18 |
 | `7. Physical Limits` | `RadarHorizonEnabled` | true |
-| `7. Physical Limits` | `LaserMinimumOutput` | 0.65 |
+| `7. Physical Limits` | `LaserMinimumOutput` | 0.55 |
 | `8. Radar Upper Coverage` | `Enabled` | true |
 | `8. Radar Upper Coverage` | `MaximumElevationDegrees` | 70 |
 | `5. Munition Malfunctions` | `DelayedFailureEarliestSeconds` | 0.8 |
@@ -121,7 +129,7 @@ Important shared controls:
 | `5. Munition Malfunctions` | `DegradedMotorThrustMultiplier` | 0.55 |
 | `6. Diagnostics` | `VerboseLogging` | false |
 
-For `Custom`, failure chance can be set by cost category: below 1,000,000; from 1,000,000 to below 10,000,000; and 10,000,000 or higher. Price is a coarse configuration proxy, not proof of real-world reliability. All three default to 0.5%.
+For `Custom`, failure chance can be set by cost category: below 1,000,000; from 1,000,000 to below 10,000,000; and 10,000,000 or higher. Price is a coarse configuration proxy, not proof of real-world reliability. Realistic uses 1.5%, 1% and 0.5% respectively.
 
 Changes made through BepInEx `ConfigEntry` objects update immediately. Editing the file externally requires a configuration reload through your BepInEx tools or a game restart.
 
@@ -132,15 +140,16 @@ Older development configurations may retain their custom numbers. Obsolete Mach,
 Checked for this release:
 
 - Release build against installed Nuclear Option 0.34.1: zero errors and warnings.
-- Eight Harmony target methods exist; typed private-field delegates initialize against the installed assemblies.
-- 94 automated assertions pass for radar coverage geometry, failure distribution and motor timing boundaries.
+- Ten Harmony target methods exist; typed private-field delegates initialize against the installed assemblies.
+- 118 model assertions pass for radar geometry, failure selection, motor boundaries, persistent settling, timing floors and preset ordering.
+- 118 integration assertions pass against actual BepInEx ConfigFile events for all numeric preset values, Custom transitions, runtime cache synchronization and saved values.
 - The native AI launch path reaches the malfunction hook: `Turret.FixedUpdate -> WeaponStation.Fire -> MissileLauncher.Fire -> Spawner.SpawnMissile -> Missile.StartMissile`. `StartMissile` sets authority from server state, not player ownership.
 
 Not yet verified: installation of the patches inside a running Unity game, live AI/SAM malfunction behavior, mission balance, frame-time impact and multiplayer synchronization. A standalone .NET patch-installation attempt hit Unity's external-call restriction; that process cannot substitute for an in-game test. No FPS improvement or real-world equipment accuracy is claimed.
 
 For multiplayer testing, use matching mod versions and configurations on participants. This is a test recommendation, not a multiplayer compatibility guarantee.
 
-Suggested mission checks: compare otherwise identical raids across presets; test a target at 69 and 71 degrees with isolated radar coverage; add a second radar to check shared tracking; test short laser bursts and full cooldown. To make malfunctions easy to observe, temporarily choose `Custom`, set all three failure chances to 100%, enable verbose logging, then restore normal settings after testing.
+Suggested mission checks: compare otherwise identical raids across presets; test a target at 69 and 71 degrees with isolated radar coverage; add a second radar to check shared tracking; test short laser bursts and full cooldown. To make malfunctions easy to observe, temporarily choose `Custom`, set all three failure chances to 100%, enable verbose logging, then reselect Realistic (or another desired preset) after testing.
 
 ## Building and testing
 
@@ -149,6 +158,8 @@ The source targets .NET Framework 4.7.2. Supply your game directory to resolve t
 ```powershell
 dotnet build RevertToStoneAge.csproj -c Release -p:GameDir="C:\Games\Nuclear Option"
 dotnet run --project Tests/ModelTests.csproj -c Release
+dotnet build Tests/ConfigIntegrationTests.csproj -c Release -p:GameDir="C:\Games\Nuclear Option"
+Tests/bin/Release/net472/ConfigIntegrationTests.exe "C:\Games\Nuclear Option"
 ```
 
 The DLL is written to `bin/Release/RevertToStoneAge.dll`. Building does not install it unless `-p:DeployToGame=true` is explicitly supplied. Game assemblies and decompiled game source are not included in this repository.

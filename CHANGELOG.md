@@ -1,4 +1,12 @@
-﻿# 1.7.0
+﻿# 1.8.0
+
+- Write named preset values into visible BepInEx entries on selection/startup; numeric edits select Custom, toggles remain independent. Batch preset saves and avoid recursive events.
+- Strengthen preset reaction, lock-time, clutter, heat and failure settings. Realistic automatic turret slew is 62.5% of native speed.
+- Make acquisition settling persistent: native alignment loss or excessive angular motion resets stability during established tracking, without changing missile seeker lock.
+- Cover radar FireControl PlanSalvo/LaunchSalvo paths that bypass turret aiming. Add planning/interval multipliers and minimum times; refresh registered controllers on configuration changes. Existing async waits retain their scheduled duration.
+- Pass 118 model and 118 actual BepInEx configuration assertions. Ten patch targets and typed fields verified. Live mission balance remains unverified.
+
+# 1.7.0
 
 - Add independent surface radar upper coverage: 70-degree default elevation limit, actual antenna origin, early request rejection and final signal gate. Preserve aircraft/missile antennas, visual detection and shared tracks.
 - Expand missile malfunctions to ignition failure, ignition delay, in-flight motor cutout, reduced thrust, actuator jam and reduced control authority. Preserve the total failure probability.
