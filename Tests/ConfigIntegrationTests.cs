@@ -31,6 +31,7 @@ class ConfigIntegrationTests
   plugin.GetField("ActivePreset").SetValue(null,selected);
   foreach(var field in plugin.GetFields(BindingFlags.Public|BindingFlags.Static)) {
    if(field.FieldType==typeof(ConfigEntry<float>))field.SetValue(null,config.Bind<float>("Numeric",field.Name,0.5f));
+   if(field.FieldType==typeof(ConfigEntry<int>))field.SetValue(null,config.Bind<int>("Numeric",field.Name,2));
    if(field.FieldType==typeof(ConfigEntry<bool>))field.SetValue(null,config.Bind<bool>("Toggles",field.Name,true));
   }
   var handler=(EventHandler<SettingChangedEventArgs>)Delegate.CreateDelegate(typeof(EventHandler<SettingChangedEventArgs>),instance,plugin.GetMethod("OnSettingChanged",flags));
@@ -52,14 +53,14 @@ class ConfigIntegrationTests
   Check(reaction.Value==2.7f,"numeric edit retained");
   value.Value=RevertToStoneAge.ModPreset.Realistic;
   value.Value=RevertToStoneAge.ModPreset.Custom;
-  Check(reaction.Value==0.8f,"Custom retains prior visible values");
+  Check(reaction.Value==0.3f,"Custom retains prior visible values");
   var toggle=(ConfigEntry<bool>)plugin.GetField("TurretDelayEnabled").GetValue(null);
   value.Value=RevertToStoneAge.ModPreset.Realistic;toggle.Value=false;
   Check(value.Value==RevertToStoneAge.ModPreset.Realistic,"feature toggle is independent");
   config.Save();
   var reread=new ConfigFile(path,true);
   Check(reread.Bind<RevertToStoneAge.ModPreset>("0. General","Preset",RevertToStoneAge.ModPreset.Custom).Value==RevertToStoneAge.ModPreset.Realistic,"preset saved to disk");
-  Check(reread.Bind<float>("Numeric","GunTargetSwitchDelay",0f).Value==0.8f,"numeric value saved to disk");
+  Check(reread.Bind<float>("Numeric","GunTargetSwitchDelay",0f).Value==0.3f,"numeric value saved to disk");
   File.Delete(path);
   Console.WriteLine("PASS: "+checks+" actual BepInEx preset/config event assertions");return 0;
  }

@@ -39,13 +39,35 @@ class ModelTests
   Check(PresetCatalog.Get(ModPreset.Custom)==null,"Custom does not replace values");
   foreach(ModPreset preset in new[]{ModPreset.ModernDefense,ModPreset.Realistic,ModPreset.WornEquipment,ModPreset.ArcadeEasy}) {
    var values=PresetCatalog.Get(preset);
-   Check(values.Count==26,"complete numeric preset");
-   Check(values["TurretSlewMultiplier"]>0f && values["TurretSlewMultiplier"]<1f,"turret slew weakened");
+   Check(values.Count==40,"complete numeric preset");
+   Check(values["TurretSlewMultiplier"]>0f && values["TurretSlewMultiplier"]==1f,"native turret slew restored");
    Check(values["RadarMinimumPlanningSeconds"]>0f,"radar zero-delay path covered");
    Check(values["RadarMaximumElevation"]==70f,"upper coverage retained");
   }
   var modern=PresetCatalog.Get(ModPreset.ModernDefense);var realistic=PresetCatalog.Get(ModPreset.Realistic);var worn=PresetCatalog.Get(ModPreset.WornEquipment);
-  Check(modern["TurretSlewMultiplier"]>realistic["TurretSlewMultiplier"] && realistic["TurretSlewMultiplier"]>worn["TurretSlewMultiplier"],"preset strength ordering");
+  Check(modern["GunLeadErrorDegrees"]<realistic["GunLeadErrorDegrees"] && realistic["GunLeadErrorDegrees"]<worn["GunLeadErrorDegrees"],"preset strength ordering");
+  Check(DefensePhysics.Classify(true,false,3000,1000,25000,1100)==DefenseRole.Gun,"gun role");
+  Check(DefensePhysics.Classify(false,true,15000,800,25000,1100)==DefenseRole.PointDefense,"point role");
+  Check(DefensePhysics.Classify(false,true,50000,1800,25000,1100)==DefenseRole.AreaDefense,"area role");
+  Check(DefensePhysics.Classify(false,true,50000,900,25000,1100)==DefenseRole.PointDefense,"range alone is insufficient");
+  Check(DefensePhysics.GunLeadError(280,3,1,330,2)==0f,"subsonic lead preserved");
+  Check(DefensePhysics.GunLeadError(1500,3,1,330,2)>DefensePhysics.GunLeadError(700,3,1,330,2),"speed stresses lead");
+  Check(DefensePhysics.GunLeadError(1500,3,1,330,2)>DefensePhysics.GunLeadError(1500,.2f,1,330,2),"flight time stresses lead");
+  Check(DefensePhysics.GunLeadError(1500,3,1,330,2)>DefensePhysics.GunLeadError(1500,3,0,330,2),"crossing target more difficult");
+  double intercept;
+  Check(DefensePhysics.TryInterceptTime(100000000,-20000000,4000000,1500,out intercept) && Math.Abs(intercept-10000.0/3500)<1e-6,"head-on interception even for faster target");
+  Check(!DefensePhysics.TryInterceptTime(100000000,20000000,4000000,1500,out intercept),"receding faster target unreachable");
+  Check(DefensePhysics.CanEngage(100000000,-20000000,4000000,1500,.5,1.5,.57,4000,true),"area defense has head-on window");
+  Check(!DefensePhysics.CanEngage(1000000,-2000000,4000000,600,1.8,1,.57,4000,false),"point defense cannot react in time");
+  Check(!DefensePhysics.CanEngage(125000000,-20000000,4000000,1500,.5,1.5,.57,4000,true),"neighboring site outside footprint");
+  Check(!DefensePhysics.CanEngage(100000000,20000000,4000000,1500,.5,1.5,.57,4000,true),"departing threat excluded");
+  Check(!DefensePhysics.CanEngage(1000000,-2000000,4000000,1500,.1,1.5,.57,4000,true),"minimum flight time constrains late engagement");
+  int rounds = DefensePhysics.CountConsumedRounds(0,6,5);
+  Check(rounds==1,"first native launcher round counted");
+  rounds=DefensePhysics.CountConsumedRounds(rounds,5,4);
+  Check(rounds==2 && !DefensePhysics.HasLaunchBudget(rounds,2),"third simultaneous rail blocked");
+  Check(DefensePhysics.CountConsumedRounds(rounds,4,4)==2,"unready launch consumes no budget");
+  Check(DefensePhysics.HasLaunchBudget(rounds,0),"zero disables cap");
   Console.WriteLine("PASS: "+checks+" radar geometry, failure selection and motor timing assertions"); return 0;
  }
 }

@@ -1,4 +1,13 @@
-﻿# 1.8.0
+﻿# 1.9.0
+
+- Add native-component gun, point-defense and area-defense roles using configurable range/speed thresholds.
+- Restore native turret drives; preserve subsonic gun prediction and add correlated high-speed lead uncertainty after native AimSolver prediction.
+- Give area defense shorter reaction/lock/settling and lighter FireControl timing and radar penalties.
+- Add approach/closest-passage and meeting-time eligibility for fast missile threats in native CombatAI assessment and recheck before individual MissileLauncher firing. Preserve native queues, seeker lock, flight limits and impact logic.
+- Add configurable area-defense 2 km terminal altitude floor and two-round per-vehicle/per-target terminal budget; never delete airborne interceptors or force a two-target salvo to succeed.
+- Preserve visible presets and expand them to 40 numeric values. Pass 137 model and 174 BepInEx configuration assertions; verify 13 target methods and fields. Live mission balance remains unverified.
+
+# 1.8.0
 
 - Write named preset values into visible BepInEx entries on selection/startup; numeric edits select Custom, toggles remain independent. Batch preset saves and avoid recursive events.
 - Strengthen preset reaction, lock-time, clutter, heat and failure settings. Realistic automatic turret slew is 62.5% of native speed.

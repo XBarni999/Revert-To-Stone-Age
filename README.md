@@ -2,7 +2,7 @@
 
 A BepInEx mod for **Nuclear Option** that changes air-defense acquisition, surface radar coverage, laser endurance, and missile reliability. The default `Realistic` preset uses moderate penalties; every faction is affected, including AI-controlled aircraft, ground SAMs, and ships.
 
-**Current version:** 1.8.0. The first public release was 1.7.0. Built against Nuclear Option **0.34.1**. Download the DLL or complete installation ZIP from [Releases](https://github.com/XBarni999/Revert-To-Stone-Age/releases/latest).
+**Current version:** 1.9.0. Built against Nuclear Option **0.34.1**. Download the DLL or complete installation ZIP from [Releases](https://github.com/XBarni999/Revert-To-Stone-Age/releases/latest).
 
 ## What the mod changes
 
@@ -33,19 +33,36 @@ These values scale clutter input; they are not direct percentage reductions in r
 
 An optional additional radar-horizon check uses `4120 * (sqrt(radar height) + sqrt(target height))` meters. The game already performs its own Earth-curvature check during normal radar requests, which remains active. This additional filter does not extend the native horizon or simulate atmospheric ducting.
 
+### Role-based air defense (1.9.0)
+
+Section 10 enables different gun, point-defense and area-defense behavior. Classification uses native weapon flags, nominal range and interceptor speed, so native-component modded weapons are included without a name whitelist. The defaults classify missile weapons as area defense only if range is at least 25 km AND interceptor speed is at least 1100 m/s; other missile weapons are point defense. These thresholds are a gameplay heuristic, not proof of real-world anti-ballistic capability. They can be adjusted.
+
+- **Guns:** native traverse/elevation rates, 0.3-second Realistic reaction, 1.1x native lock time and at most 0.25-second baseline settling. Added lead uncertainty starts above 330 m/s and increases with speed, bullet flight time and transverse motion, using actual muzzle velocity. No extra lead error applies to slower targets. Native gravity, projectile flight and impact logic remain intact. A faster head-on target is not automatically immune.
+- **Point defense:** retains the longer reaction/settling cycle and native missile flight limits. Fast missile engagements are checked against remaining approach time and effective interceptor speed; a late launch can be rejected without spending ammo.
+- **Area defense:** 0.5-second Realistic reaction, 1.1x native lock time, native drives, at most 0.25-second baseline settling, 1.25x radar salvo planning/intervals and a 0.5-second timing floor. Incoming fast missiles require a feasible meeting time, a trajectory approaching within 55 degrees of the radial line, and a predicted closest passage within 4 km of the launcher. This is a moving interception envelope around the launcher, not a fixed compass-facing radar sector. It is not a model of a separately designated protected building.
+- **Area radars:** native range at least 25 km selects an 85-degree elevation limit and reduces added clutter penalties to one quarter of the ordinary amount. Other surface radars retain 70 degrees. Aircraft and missile radar upper coverage remain native.
+- **Terminal window:** area defense rejects new launches against fast descending missile threats below 2 km of native radar altitude. The floor is configurable; set it to zero to disable it. Missiles already airborne keep fighting.
+- **Terminal launch budget:** each launching vehicle/ship can expend up to two rounds per fast descending target below 12 km radar altitude across its stations. Zero disables the cap. Actual ammo consumption increments the counter; failed/unready calls do not. The counter expires after 45 seconds without an actual shot. It is not shared among separate vehicles in a battery.
+
+The envelope uses current relative position/velocity, advances the target over reaction time and solves a constant-speed meeting point using 70% of nominal interceptor speed. It also applies a minimum flight-time floor (1.5 s area, 1 s point). This approximates acceleration/turning time; it does not replace native missile aerodynamics. It applies only to missile threats moving at least 700 m/s and to ground/ship launchers, and rechecks at launch to catch threats that moved since salvo planning.
+
+There is no guaranteed intercept, forced random destruction, guaranteed leak for a two-target salvo or artificial seeker lock loss. Native flight limits, maneuvering, malfunctions, detection and finite launch timing determine the result. Queued attacks may be rejected if their launch window closes.
+
+The high-altitude role should remain useful against favorable incoming trajectories. Live mission validation is still needed to tune the heuristic for specific game weapons.
+
 ### Turret acquisition and settling
 
 Turrets receive an acquisition delay after switching targets and a multiplier on native lock time. Optional settling time increases with the target's relative angular motion: transverse relative velocity divided by range, including the observer's velocity.
 
 Reaction and settling delays run in parallel; native lock-time accumulation follows. Settling accumulates only while native aiming is aligned and relative angular motion is within the tracking limit. It resets on native aim loss or excessive angular motion, including during an established engagement. At the limit, settling accumulates at half speed. The default angular limit is **18 degrees per second**. This affects turret firing readiness; missile seeker lock is untouched.
 
-Automatic turret traverse and elevation rates are scaled to **62.5%** of native values in Realistic. Native aiming and firing checks remain in control; manual turret control retains native slew rates. The original rate fields are restored after each aim call, including exceptions, so repeated calls do not compound the reduction. The mod does not grant high-speed missiles a price-based or Mach-based interception exemption.
+With section 10 enabled, turret traverse and elevation rates remain native. The legacy slew multiplier is only used when section 10 is disabled. Native aiming and firing checks remain in control; manual turret control retains native slew rates. The original rate fields are restored after each aim call, including exceptions, so repeated calls do not compound the reduction. The mod does not grant high-speed missiles a price-based or Mach-based interception exemption.
 
 ### Radar FireControl launch timing
 
-Some radar SAMs launch queued salvos through `FireControl` without passing through `Turret.AimTurret`. Version 1.8.0 also covers `PlanSalvo` and `LaunchSalvo`, keeping their native queues, ammo accounting and target selection intact.
+Some radar SAMs launch queued salvos through `FireControl` without passing through `Turret.AimTurret`. The mod also covers `PlanSalvo` and `LaunchSalvo`, keeping their native queues, ammo accounting and target selection intact.
 
-Realistic uses **2.5x planning time**, with a **1.2-second minimum per queued shot**, and **2x salvo intervals**, with a **0.8-second minimum between launches**. Floors cover zero native timings. These controls share the section 2 Enabled toggle. Changes refresh registered controllers immediately; a wait already scheduled by the game's async state machine finishes at its original duration.
+Point-defense Realistic uses **2.5x planning time**, with a **1.2-second minimum per queued shot**, and **2x salvo intervals**, with a **0.8-second minimum between launches**. Floors cover zero native timings. These controls share the section 2 Enabled toggle. Changes refresh registered controllers immediately; a wait already scheduled by the game's async state machine finishes at its original duration.
 
 ### Laser thermal budget
 
@@ -79,13 +96,13 @@ The default onset window for the four in-flight malfunctions is **0.8-3 seconds*
 
 | Preset | Gun / missile reaction (s) | Base settling (s) | Native lock-time multiplier | Laser firing / cooldown (s) | Missile failure chance per launch |
 |---|---:|---:|---:|---:|---:|
-| ModernDefense | 0.52 / 1.17 | 0.52 | 1.52 | 6.15 / 3.25 | 0.975 / 0.65 / 0.325% |
-| Realistic (default) | 0.8 / 1.8 | 0.8 | 1.8 | 4 / 5 | 1.5 / 1 / 0.5% |
-| WornEquipment | 1.12 / 2.52 | 1.12 | 2.12 | 2.86 / 7 | 2.1 / 1.4 / 0.7% |
-| ArcadeEasy | 1.44 / 3.24 | 1.44 | 2.44 | 2.22 / 9 | 2.7 / 1.8 / 0.9% |
+| ModernDefense | 0.195 / 1.17 | 0.52 | 1.52 | 6.15 / 3.25 | 0.975 / 0.65 / 0.325% |
+| Realistic (default) | 0.3 / 1.8 | 0.8 | 1.8 | 4 / 5 | 1.5 / 1 / 0.5% |
+| WornEquipment | 0.42 / 2.52 | 1.12 | 2.12 | 2.86 / 7 | 2.1 / 1.4 / 0.7% |
+| ArcadeEasy | 0.54 / 3.24 | 1.44 | 2.44 | 2.22 / 9 | 2.7 / 1.8 / 0.9% |
 | Custom | Configured values | Configured value | Configured value | Configured values | Configured cost tiers |
 
-Failure percentages are cheap / standard / high-end cost tiers.
+This table lists legacy/point-defense lock and settling values; gun/area roles override those as described above. Area reaction scales by preset severity. Failure percentages are cheap / standard / high-end cost tiers.
 
 `ArcadeEasy` makes attacking air defenses easier; it affects every side equally. `WornEquipment` represents degraded readiness through settings, not a simulated maintenance history.
 
@@ -140,9 +157,9 @@ Older development configurations may retain their custom numbers. Obsolete Mach,
 Checked for this release:
 
 - Release build against installed Nuclear Option 0.34.1: zero errors and warnings.
-- Ten Harmony target methods exist; typed private-field delegates initialize against the installed assemblies.
-- 118 model assertions pass for radar geometry, failure selection, motor boundaries, persistent settling, timing floors and preset ordering.
-- 118 integration assertions pass against actual BepInEx ConfigFile events for all numeric preset values, Custom transitions, runtime cache synchronization and saved values.
+- Thirteen Harmony target methods exist; typed private-field delegates initialize against the installed assemblies.
+- 137 model assertions pass for radar geometry, failure selection, motor boundaries, persistent settling, timing floors and preset ordering.
+- 174 integration assertions pass against actual BepInEx ConfigFile events for all numeric preset values, Custom transitions, runtime cache synchronization and saved values.
 - The native AI launch path reaches the malfunction hook: `Turret.FixedUpdate -> WeaponStation.Fire -> MissileLauncher.Fire -> Spawner.SpawnMissile -> Missile.StartMissile`. `StartMissile` sets authority from server state, not player ownership.
 
 Not yet verified: installation of the patches inside a running Unity game, live AI/SAM malfunction behavior, mission balance, frame-time impact and multiplayer synchronization. A standalone .NET patch-installation attempt hit Unity's external-call restriction; that process cannot substitute for an in-game test. No FPS improvement or real-world equipment accuracy is claimed.
@@ -190,3 +207,5 @@ This project is an unofficial community modification and is not affiliated with,
 The [NWS explanation of a radar cone of silence](https://www.weather.gov/mlb/Doppler_Dual_Pol_Weather_Radar) illustrates overhead coverage limits using weather radar; its numerical scan angles are not used as military radar specifications here. [MDA's history of remote-sensor interception](https://www.mda.mil/about/history.html) provides context for keeping shared sensor information intact.
 
 All numerical penalties and failure rates in this mod are gameplay-model settings rather than measured specifications for particular weapons.
+
+For the role redesign, [MBDA describes SAMP/T NG's 360-degree radar coverage](https://www.mbda-systems.com/products/area-protection/aster-family/sampt-ng); a narrow fixed compass sector is therefore not imposed universally. [MDA describes terminal defense as having little margin for error](https://www.mda.mil/system/elements.html), but these sources do not substantiate this mod's 2 km floor, two-round limit or numerical interception envelope. Those values remain adjustable gameplay assumptions.

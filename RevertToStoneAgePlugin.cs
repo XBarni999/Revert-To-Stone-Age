@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.CompilerServices;
 using BepInEx;
 using BepInEx.Configuration;
@@ -71,6 +71,22 @@ namespace RevertToStoneAge
         public static ConfigEntry<float> RadarSalvoIntervalMultiplier;
         public static ConfigEntry<float> RadarMinimumPlanningSeconds;
         public static ConfigEntry<float> RadarMinimumSalvoIntervalSeconds;
+        public static ConfigEntry<bool> DefenseRolesEnabled;
+        public static ConfigEntry<float> AreaMinimumRange;
+        public static ConfigEntry<float> AreaMinimumSpeed;
+        public static ConfigEntry<float> FastThreatSpeed;
+        public static ConfigEntry<float> GunLeadErrorDegrees;
+        public static ConfigEntry<float> AreaReactionSeconds;
+        public static ConfigEntry<float> AreaRadarMaximumElevation;
+        public static ConfigEntry<float> AreaPlanningMultiplier;
+        public static ConfigEntry<float> AreaSalvoMultiplier;
+        public static ConfigEntry<float> AreaMinimumFlightSeconds;
+        public static ConfigEntry<float> PointMinimumFlightSeconds;
+        public static ConfigEntry<float> AreaApproachHalfAngle;
+        public static ConfigEntry<float> ProtectedRadius;
+        public static ConfigEntry<float> HeavyMinimumTargetAltitude;
+        public static ConfigEntry<int> TerminalLaunchLimit;
+        public static ConfigEntry<float> TerminalBudgetAltitude;
         private bool applyingPreset;
         private void Awake()
         {
@@ -152,6 +168,22 @@ namespace RevertToStoneAge
             RadarSalvoIntervalMultiplier = Config.Bind("9. Radar Fire Control", "SalvoIntervalMultiplier", 2f, new ConfigDescription("Scale native interval between FireControl launches.", new AcceptableValueRange<float>(1f, 8f)));
             RadarMinimumPlanningSeconds = Config.Bind("9. Radar Fire Control", "MinimumPlanningSecondsPerShot", 1.2f, new ConfigDescription("Minimum planning time per queued shot, even if native planning time is zero.", new AcceptableValueRange<float>(0f, 10f)));
             RadarMinimumSalvoIntervalSeconds = Config.Bind("9. Radar Fire Control", "MinimumSalvoIntervalSeconds", 0.8f, new ConfigDescription("Minimum interval between queued launches, even if native interval is zero.", new AcceptableValueRange<float>(0f, 10f)));
+            DefenseRolesEnabled = Config.Bind("10. Defense Roles", "Enabled", true, "Classify weapons by native gun/missile flags, range and interceptor speed; preserve native missile seekers and flight limits.");
+            AreaMinimumRange = RoleSetting("AreaMinimumRangeMeters", 25000f, 5000f, 200000f);
+            AreaMinimumSpeed = RoleSetting("AreaMinimumInterceptorSpeed", 1100f, 100f, 10000f);
+            FastThreatSpeed = RoleSetting("FastMissileThreatSpeed", 700f, 300f, 5000f);
+            GunLeadErrorDegrees = RoleSetting("GunHighSpeedLeadErrorDegrees", 2f, 0f, 10f);
+            AreaRadarMaximumElevation = RoleSetting("AreaRadarMaximumElevationDegrees", 85f, 20f, 90f);
+            AreaReactionSeconds = RoleSetting("AreaReactionSeconds", 0.5f, 0f, 10f);
+            AreaPlanningMultiplier = RoleSetting("AreaPlanningMultiplier", 1.25f, 1f, 8f);
+            AreaSalvoMultiplier = RoleSetting("AreaSalvoIntervalMultiplier", 1.25f, 1f, 8f);
+            AreaMinimumFlightSeconds = RoleSetting("AreaMinimumFlightSeconds", 1.5f, 0.1f, 15f);
+            PointMinimumFlightSeconds = RoleSetting("PointMinimumFlightSeconds", 1f, 0.1f, 15f);
+            AreaApproachHalfAngle = RoleSetting("AreaApproachHalfAngleDegrees", 55f, 5f, 90f);
+            ProtectedRadius = RoleSetting("ProtectedSiteRadiusMeters", 4000f, 100f, 50000f);
+            HeavyMinimumTargetAltitude = RoleSetting("HeavyMinimumDescendingThreatAltitude", 2000f, 0f, 10000f);
+            TerminalBudgetAltitude = RoleSetting("TerminalBudgetAltitudeMeters", 12000f, 1000f, 30000f);
+            TerminalLaunchLimit = Config.Bind("10. Defense Roles", "MaximumTerminalLaunchesPerTarget", 2, new ConfigDescription("Per battery and target during a fast descending terminal pass. Zero disables the budget. Does not remove missiles already airborne.", new AcceptableValueRange<int>(0, 10)));
             Config.SettingChanged += OnSettingChanged;
             ApplySelectedPreset();
 
@@ -161,6 +193,9 @@ namespace RevertToStoneAge
 
             Log.LogInfo($"{PluginInfo.PLUGIN_NAME} v{PluginInfo.PLUGIN_VERSION} initialized with physical acquisition limits and thermal budget.");
         }
+
+        private ConfigEntry<float> RoleSetting(string key, float value, float min, float max)
+            => Config.Bind("10. Defense Roles", key, value, new ConfigDescription("Configurable gameplay envelope; not a specification of a named real-world system.", new AcceptableValueRange<float>(min, max)));
 
         private void ApplySelectedPreset()
         {
@@ -187,7 +222,7 @@ namespace RevertToStoneAge
             if (applyingPreset) return;
             if (args.ChangedSetting == ActivePreset) { ApplySelectedPreset(); return; }
             // A numeric adjustment becomes Custom so displayed values always match effective values.
-            if (args.ChangedSetting is ConfigEntry<float> && ActivePreset.Value != ModPreset.Custom)
+            if ((args.ChangedSetting is ConfigEntry<float> || args.ChangedSetting is ConfigEntry<int>) && ActivePreset.Value != ModPreset.Custom)
             {
                 applyingPreset = true;
                 try { ActivePreset.Value = ModPreset.Custom; }
@@ -214,7 +249,7 @@ namespace RevertToStoneAge
     {
         public const string PLUGIN_GUID = "com.xbarni.reverttostoneage";
         public const string PLUGIN_NAME = "Revert To Stone Age";
-        public const string PLUGIN_VERSION = "1.8.0";
+        public const string PLUGIN_VERSION = "1.9.0";
     }
 
     // Typed cached field delegates avoid FieldInfo.GetValue/SetValue boxing on simulation ticks.
@@ -229,6 +264,10 @@ namespace RevertToStoneAge
         internal static readonly AccessTools.FieldRef<Missile, bool> Ignition = AccessTools.FieldRefAccess<Missile, bool>("ignition");
         internal static readonly AccessTools.FieldRef<Missile, Vector3> Inputs = AccessTools.FieldRefAccess<Missile, Vector3>("inputs");
         internal static readonly AccessTools.FieldRef<TargetDetector, Unit> RadarOwner = AccessTools.FieldRefAccess<TargetDetector, Unit>("attachedUnit");
+        internal static readonly AccessTools.FieldRef<AimSolver, WeaponInfo> AimInfo = AccessTools.FieldRefAccess<AimSolver, WeaponInfo>("weaponInfo");
+        internal static readonly AccessTools.FieldRef<AimSolver, Unit> AimTarget = AccessTools.FieldRefAccess<AimSolver, Unit>("currentTarget");
+        internal static readonly AccessTools.FieldRef<AimSolver, Transform> AimMuzzle = AccessTools.FieldRefAccess<AimSolver, Transform>("firingTransform");
+        internal static readonly AccessTools.FieldRef<FireControl, System.Collections.Generic.List<WeaponStation>> ControlStations = AccessTools.FieldRefAccess<FireControl, System.Collections.Generic.List<WeaponStation>>("subscribedWeaponStations");
         internal static readonly AccessTools.FieldRef<Turret, float> Traverse = AccessTools.FieldRefAccess<Turret, float>("traverseRate");
         internal static readonly AccessTools.FieldRef<Turret, float> Elevation = AccessTools.FieldRefAccess<Turret, float>("elevationRate");
         internal static readonly AccessTools.FieldRef<Turret, bool> Manual = AccessTools.FieldRefAccess<Turret, bool>("manual");
@@ -259,7 +298,12 @@ namespace RevertToStoneAge
             float low = Mathf.Lerp(RevertToStoneAgePlugin.CachedLowAltPenalty, 1f, altitude);
             float down = Mathf.Clamp01((-offset.y / Mathf.Max(1f, offset.magnitude) - Mathf.Sin(Mathf.Clamp(RevertToStoneAgePlugin.LookDownAngleThreshold.Value, 0f, 89f) * Mathf.Deg2Rad)) / 0.25f);
             float look = Mathf.Lerp(1f, RevertToStoneAgePlugin.CachedLookDownPenalty, down);
-            clutterFactor *= RevertToStoneAgePlugin.CachedClutterMult / Mathf.Max(0.1f, low * look);
+            float clutter = RevertToStoneAgePlugin.CachedClutterMult;
+            if (RevertToStoneAgePlugin.DefenseRolesEnabled.Value && __instance.RadarParameters.maxRange >= RevertToStoneAgePlugin.AreaMinimumRange.Value)
+            {
+                low = Mathf.Lerp(1f, low, 0.25f); look = Mathf.Lerp(1f, look, 0.25f); clutter = Mathf.Lerp(1f, clutter, 0.25f);
+            }
+            clutterFactor *= clutter / Mathf.Max(0.1f, low * look);
             return true;
         }
     }
@@ -274,6 +318,7 @@ namespace RevertToStoneAge
         {
             __state = new Vector2(FastReflection.Traverse(__instance), FastReflection.Elevation(__instance));
             if (!RevertToStoneAgePlugin.TurretDelayEnabled.Value || FastReflection.Manual(__instance)) return;
+            if (RevertToStoneAgePlugin.DefenseRolesEnabled.Value) return; // Native drives for role-aware air defense.
             FastReflection.Traverse(__instance) *= RevertToStoneAgePlugin.TurretSlewMultiplier.Value;
             FastReflection.Elevation(__instance) *= RevertToStoneAgePlugin.TurretSlewMultiplier.Value;
         }
@@ -286,7 +331,10 @@ namespace RevertToStoneAge
         private static void Postfix(Turret __instance, ref bool __result)
         {
             State state = States.GetOrCreateValue(__instance);
-            float mult = RevertToStoneAgePlugin.TurretDelayEnabled.Value && !FastReflection.Manual(__instance) ? RevertToStoneAgePlugin.CachedLockTimeMult : 1f;
+            WeaponInfo roleInfo = FastReflection.Station(__instance)?.WeaponInfo;
+            DefenseRole role = DefenseIntegration.Role(roleInfo);
+            float roleLock = RevertToStoneAgePlugin.DefenseRolesEnabled.Value && (role == DefenseRole.Gun || role == DefenseRole.AreaDefense) ? 1.1f : RevertToStoneAgePlugin.CachedLockTimeMult;
+            float mult = RevertToStoneAgePlugin.TurretDelayEnabled.Value && !FastReflection.Manual(__instance) ? roleLock : 1f;
             if (mult != state.LockMultiplier)
             {
                 FastReflection.LockTime(__instance) = FastReflection.LockTime(__instance) / state.LockMultiplier * mult;
@@ -300,7 +348,7 @@ namespace RevertToStoneAge
             WeaponStation station = FastReflection.Station(__instance);
             bool missile = station != null && station.WeaponInfo != null && station.WeaponInfo.missile;
             float elapsed = Time.time - state.Acquired;
-            if (RevertToStoneAgePlugin.TurretDelayEnabled.Value && elapsed < RevertToStoneAgePlugin.GetTargetSwitchDelay(missile)) __result = false;
+            if (RevertToStoneAgePlugin.TurretDelayEnabled.Value && elapsed < (RevertToStoneAgePlugin.DefenseRolesEnabled.Value && role == DefenseRole.AreaDefense ? RevertToStoneAgePlugin.AreaReactionSeconds.Value : RevertToStoneAgePlugin.GetTargetSwitchDelay(missile))) __result = false;
             if (!RevertToStoneAgePlugin.TrackingJitterEnabled.Value) return;
             Vector3 offset = target.transform.position - __instance.transform.position;
             Vector3 velocity = target.rb != null ? target.rb.velocity : target.transform.forward * target.speed;
@@ -309,6 +357,7 @@ namespace RevertToStoneAge
             float angular = Vector3.Cross(offset, velocity).magnitude / Mathf.Max(1f, offset.sqrMagnitude) * Mathf.Rad2Deg;
             float limit = Mathf.Clamp(RevertToStoneAgePlugin.AngularTrackingLimit.Value, 1f, 180f);
             float settling = RevertToStoneAgePlugin.TrackingConvergenceTime.Value;
+            if (RevertToStoneAgePlugin.DefenseRolesEnabled.Value && (role == DefenseRole.Gun || role == DefenseRole.AreaDefense)) { limit = 90f; settling = Mathf.Min(settling, 0.25f); }
             state.StableTime = BalanceRules.AdvanceStability(state.StableTime, Time.fixedDeltaTime, nativeOnTarget, angular, limit, settling);
             if (state.StableTime < settling) __result = false;
         }
@@ -372,7 +421,9 @@ namespace RevertToStoneAge
             Unit owner = FastReflection.RadarOwner(radar);
             if (owner is Aircraft || owner is Missile) return false;
             Vector3 offset = targetPosition - radar.GetScanPoint().position;
-            return BalanceRules.IsAboveCoverage(offset.x, offset.y, offset.z, RevertToStoneAgePlugin.RadarMaximumElevation.Value);
+            float elevation = RevertToStoneAgePlugin.DefenseRolesEnabled.Value && radar.RadarParameters.maxRange >= RevertToStoneAgePlugin.AreaMinimumRange.Value
+                ? RevertToStoneAgePlugin.AreaRadarMaximumElevation.Value : RevertToStoneAgePlugin.RadarMaximumElevation.Value;
+            return BalanceRules.IsAboveCoverage(offset.x, offset.y, offset.z, elevation);
         }
         private static bool Prefix(TargetDetector detector, Unit target)
         {
@@ -409,8 +460,13 @@ namespace RevertToStoneAge
         private static void Apply(FireControl control, State state)
         {
             bool enabled = RevertToStoneAgePlugin.TurretDelayEnabled.Value && control.TryGetRadar(out var radar);
-            FastReflection.Planning(control) = enabled ? BalanceRules.ScaleTiming(state.Planning, RevertToStoneAgePlugin.RadarFireControlPlanningMultiplier.Value, RevertToStoneAgePlugin.RadarMinimumPlanningSeconds.Value) : state.Planning;
-            FastReflection.Salvo(control) = enabled ? BalanceRules.ScaleTiming(state.Salvo, RevertToStoneAgePlugin.RadarSalvoIntervalMultiplier.Value, RevertToStoneAgePlugin.RadarMinimumSalvoIntervalSeconds.Value) : state.Salvo;
+            bool area = RevertToStoneAgePlugin.DefenseRolesEnabled.Value && FastReflection.ControlStations(control).Exists(station => DefenseIntegration.Role(station.WeaponInfo) == DefenseRole.AreaDefense);
+            float planning = area ? RevertToStoneAgePlugin.AreaPlanningMultiplier.Value : RevertToStoneAgePlugin.RadarFireControlPlanningMultiplier.Value;
+            float salvo = area ? RevertToStoneAgePlugin.AreaSalvoMultiplier.Value : RevertToStoneAgePlugin.RadarSalvoIntervalMultiplier.Value;
+            float minPlanning = area ? RevertToStoneAgePlugin.AreaReactionSeconds.Value : RevertToStoneAgePlugin.RadarMinimumPlanningSeconds.Value;
+            float minSalvo = area ? 0.5f : RevertToStoneAgePlugin.RadarMinimumSalvoIntervalSeconds.Value;
+            FastReflection.Planning(control) = enabled ? BalanceRules.ScaleTiming(state.Planning, planning, minPlanning) : state.Planning;
+            FastReflection.Salvo(control) = enabled ? BalanceRules.ScaleTiming(state.Salvo, salvo, minSalvo) : state.Salvo;
         }
         internal static void Refresh()
         {

@@ -15,9 +15,9 @@ namespace RevertToStoneAge
                 {"LowAltitudeThreshold", 120f}, {"LowAltitudeSignalPenalty", 1f - 0.4f * severity},
                 {"LookDownAngleThreshold", 3f}, {"LookDownSignalPenalty", 1f - 0.3f * severity},
                 {"ExtraClutterMultiplier", 1f + 0.8f * severity},
-                {"GunTargetSwitchDelay", 0.8f * severity}, {"MissileTargetSwitchDelay", 1.8f * severity},
+                {"GunTargetSwitchDelay", 0.3f * severity}, {"MissileTargetSwitchDelay", 1.8f * severity},
                 {"TurretLockTimeMultiplier", 1f + 0.8f * severity},
-                {"TurretSlewMultiplier", 1f / (1f + 0.6f * severity)},
+                {"TurretSlewMultiplier", 1f},
                 {"TrackingConvergenceTime", 0.8f * severity}, {"AngularTrackingLimit", 18f / severity},
                 {"RadarFireControlPlanningMultiplier", 1f + 1.5f * severity},
                 {"RadarSalvoIntervalMultiplier", 1f + severity},
@@ -26,6 +26,12 @@ namespace RevertToStoneAge
                 {"LaserMinimumOutput", 0.55f}, {"RadarMaximumElevation", 70f},
                 {"CheapMunitionFailRate", 1.5f * severity}, {"StandardMunitionFailRate", 1f * severity}, {"HighEndMunitionFailRate", 0.5f * severity},
                 {"FailureOnsetMin", 0.8f}, {"FailureOnsetMax", 3f},
+                {"AreaMinimumRange", 25000f}, {"AreaMinimumSpeed", 1100f}, {"FastThreatSpeed", 700f},
+                {"GunLeadErrorDegrees", 2f * severity}, {"AreaRadarMaximumElevation", 85f}, {"AreaReactionSeconds", 0.5f * severity},
+                {"AreaPlanningMultiplier", 1f + 0.25f * severity}, {"AreaSalvoMultiplier", 1f + 0.25f * severity},
+                {"AreaMinimumFlightSeconds", 1.5f}, {"PointMinimumFlightSeconds", 1f},
+                {"AreaApproachHalfAngle", 55f}, {"ProtectedRadius", 4000f},
+                {"HeavyMinimumTargetAltitude", 2000f}, {"TerminalBudgetAltitude", 12000f},
                 {"IgnitionDelayDuration", 0.6f}, {"DegradedThrustMultiplier", 0.55f}
             };
         }
