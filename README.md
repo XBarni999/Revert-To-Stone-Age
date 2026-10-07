@@ -183,6 +183,8 @@ Tests/bin/Release/net472/ConfigIntegrationTests.exe "C:\Games\Nuclear Option"
 
 The DLL is written to `bin/Release/RevertToStoneAge.dll`. Building does not install it unless `-p:DeployToGame=true` is explicitly supplied. Game assemblies and decompiled game source are not included in this repository.
 
+This project is an unofficial community modification and is not affiliated with, sponsored by, or endorsed by Shockfront Studios Pty Ltd. Original Nuclear Option assets, vehicle designs, audio, and code are Copyright (c) 2026 Shockfront Studios Pty Ltd. All rights reserved. Nuclear Option and Shockfront Studios are trademarks or registered trademarks of Shockfront Studios Pty Ltd. Original mod content and all other trademarks belong to their respective owners.
+
 ## References
 
 The [NWS explanation of a radar cone of silence](https://www.weather.gov/mlb/Doppler_Dual_Pol_Weather_Radar) illustrates overhead coverage limits using weather radar; its numerical scan angles are not used as military radar specifications here. [MDA's history of remote-sensor interception](https://www.mda.mil/about/history.html) provides context for keeping shared sensor information intact.
