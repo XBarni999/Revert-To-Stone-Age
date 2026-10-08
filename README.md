@@ -187,15 +187,12 @@ These are **structural compatibility findings, not a claim that every mod combin
 
 To check a particular combination, enable verbose logging and temporarily use Custom with 100% failure rates, launch the added missile, and inspect the scheduled-failure message. This confirms that the launch hook sees it; observing its flight is still required to establish that another mod does not override the selected defect. Restore a normal preset afterward. For an added SAM, separately check its native turret path and radar FireControl path; support for its missile alone does not prove that every launcher penalty applies.
 
-## Building and testing
+## Building
 
 The source targets .NET Framework 4.7.2. Supply your game directory to resolve the game's and BepInEx's assemblies:
 
 ```powershell
 dotnet build RevertToStoneAge.csproj -c Release -p:GameDir="C:\Games\Nuclear Option"
-dotnet run --project Tests/ModelTests.csproj -c Release
-dotnet build Tests/ConfigIntegrationTests.csproj -c Release -p:GameDir="C:\Games\Nuclear Option"
-Tests/bin/Release/net472/ConfigIntegrationTests.exe "C:\Games\Nuclear Option"
 ```
 
 The DLL is written to `bin/Release/RevertToStoneAge.dll`. Building does not install it unless `-p:DeployToGame=true` is explicitly supplied. Game assemblies and decompiled game source are not included in this repository.
